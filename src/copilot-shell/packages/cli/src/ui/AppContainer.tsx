@@ -614,6 +614,7 @@ export const AppContainer = (props: AppContainerProps) => {
     historyManager.loadHistory,
     refreshStatic,
     toggleVimEnabled,
+    isProcessing,
     setIsProcessing,
     setGeminiMdFileCount,
     slashCommandActions,
