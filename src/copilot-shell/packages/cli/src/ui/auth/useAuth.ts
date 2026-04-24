@@ -241,11 +241,22 @@ export const useAuthCommand = (
 
         // Validate API key for OpenAI auth by making a lightweight API call
         // This validates both new credentials and existing saved credentials
+        // TEMPORARY: Only validate for DashScope (compatible-mode), skip for other providers
+        // TODO: Add validation for other providers once we verify their API compatibility
         if (authType === AuthType.USE_OPENAI) {
           const contentGenerator = config.getContentGenerator();
-          // Check if validateApiKey method exists (it's optional on ContentGenerator interface)
-          // LoggingContentGenerator wraps OpenAIContentGenerator, so we check the method existence
+          const contentGeneratorConfig = config.getContentGeneratorConfig();
+
+          // Check if this is DashScope compatible-mode provider
+          const baseUrl = contentGeneratorConfig?.baseUrl;
+          const isDashScopeCompatibleMode =
+            baseUrl &&
+            baseUrl.includes('dashscope.aliyuncs.com') &&
+            baseUrl.includes('compatible-mode');
+
+          // Only validate for DashScope compatible-mode - other providers skip validation temporarily
           if (
+            isDashScopeCompatibleMode &&
             contentGenerator &&
             typeof contentGenerator.validateApiKey === 'function'
           ) {
