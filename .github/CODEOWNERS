@@ -23,7 +23,9 @@
 /src/agent-sec-core/                    @edonyzpc @kid9             # auto-label: component:sec-core
 /src/agent-sec-core/linux-sandbox/      @yanrong-hsr                # auto-label: component:sec-core
 /src/os-skills/                         @Ziqi002                    # auto-label: component:skill
+/src/ws-ckpt/                           @Ziqi002                    # auto-label: component:ckpt
 /src/osbase/                            @casparant                  # auto-label: component:osbase
+/src/tokenless/                         @Forrest-ly @shiloong       # auto-label: component:tokenless
 
 # ---------------------------------------------------------------------------
 # Scope paths

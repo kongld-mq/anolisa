@@ -18,6 +18,8 @@ body:
         - sec-core
         - skill
         - sight
+        - tokenless
+        - ckpt
         - other
   - type: textarea
     id: question

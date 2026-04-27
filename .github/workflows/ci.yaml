@@ -22,6 +22,16 @@ on:
         required: false
         type: boolean
         default: false
+      run_tokenless:
+        description: 'Force run tokenless tests (ignore change detection)'
+        required: false
+        type: boolean
+        default: false
+      run_ws_ckpt:
+        description: 'Force run ws-ckpt tests (ignore change detection)'
+        required: false
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -37,6 +47,8 @@ jobs:
       copilot_shell: ${{ steps.changes.outputs.copilot_shell }}
       agent_sec_core: ${{ steps.changes.outputs.agent_sec_core }}
       agentsight: ${{ steps.changes.outputs.agentsight }}
+      tokenless: ${{ steps.changes.outputs.tokenless }}
+      ws_ckpt: ${{ steps.changes.outputs.ws_ckpt }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -60,6 +72,8 @@ jobs:
           COPILOT_SHELL=false
           AGENT_SEC=false
           AGENTSIGHT=false
+          TOKENLESS=false
+          WS_CKPT=false
 
           # Path-based detection
           if echo "$CHANGED" | grep -q "^src/copilot-shell/"; then
@@ -70,6 +84,12 @@ jobs:
           fi
           if echo "$CHANGED" | grep -q "^src/agentsight/"; then
             AGENTSIGHT=true
+          fi
+          if echo "$CHANGED" | grep -q "^src/tokenless/"; then
+            TOKENLESS=true
+          fi
+          if echo "$CHANGED" | grep -q "^src/ws-ckpt/"; then
+            WS_CKPT=true
           fi
 
           # Manual override via workflow_dispatch
@@ -82,10 +102,18 @@ jobs:
           if [[ "${{ inputs.run_agentsight }}" == "true" ]]; then
             AGENTSIGHT=true
           fi
+          if [[ "${{ inputs.run_tokenless }}" == "true" ]]; then
+            TOKENLESS=true
+          fi
+          if [[ "${{ inputs.run_ws_ckpt }}" == "true" ]]; then
+            WS_CKPT=true
+          fi
 
           echo "copilot_shell=$COPILOT_SHELL" >> $GITHUB_OUTPUT
           echo "agent_sec_core=$AGENT_SEC" >> $GITHUB_OUTPUT
           echo "agentsight=$AGENTSIGHT" >> $GITHUB_OUTPUT
+          echo "tokenless=$TOKENLESS" >> $GITHUB_OUTPUT
+          echo "ws_ckpt=$WS_CKPT" >> $GITHUB_OUTPUT
 
           echo "### Change Detection Results" >> $GITHUB_STEP_SUMMARY
           echo "| Component | Changed |" >> $GITHUB_STEP_SUMMARY
@@ -93,6 +121,8 @@ jobs:
           echo "| copilot-shell | $COPILOT_SHELL |" >> $GITHUB_STEP_SUMMARY
           echo "| agent-sec-core | $AGENT_SEC |" >> $GITHUB_STEP_SUMMARY
           echo "| agentsight | $AGENTSIGHT |" >> $GITHUB_STEP_SUMMARY
+          echo "| tokenless | $TOKENLESS |" >> $GITHUB_STEP_SUMMARY
+          echo "| ws-ckpt | $WS_CKPT |" >> $GITHUB_STEP_SUMMARY
 
   # =========================================================================
   # Step 2: Build & Lint copilot-shell
@@ -216,9 +246,10 @@ jobs:
         with:
           toolchain: '1.93.0'
 
-      - uses: actions/setup-python@v5
+      - name: astral-sh/setup-uv
+        uses: astral-sh/setup-uv@v8.0.0
         with:
-          python-version: '3.12'
+          python-version: '3.11.6'
 
       - uses: Swatinem/rust-cache@v2
         with:
@@ -229,18 +260,43 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y clang llvm libssl-dev libseccomp-dev bubblewrap
 
+      - name: Check formatting
+        run: |
+          cd src/agent-sec-core
+          make python-code-pretty
+          if ! git diff-index --quiet HEAD --; then
+              echo "ERROR: Code style check failed. Please run 'make python-code-pretty' locally." >&2
+              git status --porcelain >&2
+              exit 1
+          fi
+          echo "Code style check passed."
+
+      - name: Check uv.lock in sync with pyproject.toml
+        run: |
+          cd src/agent-sec-core/agent-sec-cli
+          uv lock --check
+
+      - name: Check requirements.txt in sync with uv.lock
+        run: |
+          cd src/agent-sec-core
+          make export-requirements
+          if ! git diff --quiet -- agent-sec-cli/requirements.txt; then
+              echo "ERROR: agent-sec-cli/requirements.txt is out of sync with uv.lock." >&2
+              echo "Please run 'make export-requirements' locally and commit the result." >&2
+              git diff -- agent-sec-cli/requirements.txt >&2
+              exit 1
+          fi
+          echo "requirements.txt is in sync with uv.lock."
+
       - name: Run Python tests
         run: |
-          pip install pytest
           cd src/agent-sec-core
-          pytest tests/integration-test/ tests/unit-test/ -v
+          make test-python
 
       - name: Run Rust tests
         run: |
-          cd src/agent-sec-core/linux-sandbox
-          # Skip bwrap_seccomp tests: GitHub Actions runners lack user namespace
-          # and privilege support required by bubblewrap sandbox
-          cargo test -- --skip bwrap_seccomp
+          cd src/agent-sec-core
+          make test-rust
 
   # =========================================================================
   # Step 5: Test agentsight (Linux only)
@@ -272,3 +328,77 @@ jobs:
           rustup component add rustfmt
           cd src/agentsight
           cargo test
+
+  # =========================================================================
+  # Step 6: Test tokenless
+  # =========================================================================
+  test-tokenless:
+    name: Test tokenless
+    needs: detect-changes
+    if: needs.detect-changes.outputs.tokenless == 'true'
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: '1.85.0'
+          components: 'rustfmt, clippy'
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src/tokenless
+
+      - name: Check formatting
+        run: |
+          cd src/tokenless
+          cargo fmt --all --check
+
+      - name: Lint
+        run: |
+          cd src/tokenless
+          cargo clippy --workspace -- -D warnings
+
+      - name: Run tests
+        run: |
+          cd src/tokenless
+          cargo test --workspace
+
+  # =========================================================================
+  # Step 7: Test ws-ckpt
+  # =========================================================================
+  test-ws-ckpt:
+    name: Test ws-ckpt
+    needs: detect-changes
+    if: needs.detect-changes.outputs.ws_ckpt == 'true'
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: 'rustfmt, clippy'
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src/ws-ckpt/src
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y btrfs-progs rsync
+
+      - name: Check formatting
+        run: |
+          cd src/ws-ckpt/src
+          cargo fmt --all --check
+
+      - name: Lint
+        run: |
+          cd src/ws-ckpt/src
+          cargo clippy --workspace -- -D warnings
+
+      - name: Run tests
+        run: |
+          cd src/ws-ckpt/src
+          cargo test --workspace

@@ -41,6 +41,7 @@ pub mod tokenizer;
 pub mod genai;
 pub mod atif;
 pub mod response_map;
+pub mod interruption;
 #[cfg(feature = "server")]
 pub mod server;
 mod unified;
@@ -81,7 +82,7 @@ pub use storage::{
 };
 
 // Re-export unified entry point
-pub use unified::{AgentSight, ProcessResult};
+pub use unified::AgentSight;
 
 // Re-export file watch types
 pub use probes::FileWatchEvent;

@@ -17,12 +17,10 @@ run_shell() {
 
 run_sec() {
     echo "==> Running agent-sec-core tests"
-    cd "$ROOT_DIR/src/agent-sec-core" || exit 1
-    # Check if pytest is available, else fallback
-    if command -v pytest >/dev/null 2>&1; then
-        pytest tests/integration-test/ tests/unit-test/
+    if command -v uv >/dev/null 2>&1; then
+        make -C "$ROOT_DIR/src/agent-sec-core" test-python
     else
-        echo "pytest not found, skipping sec tests or please install it."
+        echo "uv not found, skipping agent-sec-core Python tests."
     fi
 
     echo "==> Running agent-sec-core e2e test scripts manually"
@@ -43,18 +41,34 @@ run_sight() {
     fi
 }
 
+run_tokenless() {
+    echo "==> Running tokenless tests"
+    cd "$ROOT_DIR/src/tokenless" || exit 1
+    if command -v make >/dev/null 2>&1; then
+        make test
+    elif command -v cargo >/dev/null 2>&1; then
+        echo "make not found, using cargo directly"
+        cargo test --workspace
+    else
+        echo "cargo not found, skipping tokenless tests."
+    fi
+}
+
 if [ -z "$FILTER" ]; then
     run_shell
     run_sec
     run_sight
+    run_tokenless
 elif [ "$FILTER" == "shell" ]; then
     run_shell
 elif [ "$FILTER" == "sec" ]; then
     run_sec
 elif [ "$FILTER" == "sight" ]; then
     run_sight
+elif [ "$FILTER" == "tokenless" ]; then
+    run_tokenless
 else
-    echo "Unknown filter: $FILTER. Use 'shell', 'sec', or 'sight'."
+    echo "Unknown filter: $FILTER. Use 'shell', 'sec', 'sight', or 'tokenless'."
     exit 1
 fi
 

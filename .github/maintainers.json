@@ -49,10 +49,29 @@
             ]
         },
         {
+            "label": "component:tokenless",
+            "maintainers": [
+                {
+                    "github": "Forrest-ly"
+                },
+                {
+                    "github": "shiloong"
+                }
+            ]
+        },
+        {
             "label": "component:sight",
             "maintainers": [
                 {
                     "github": "chengshuyi"
+                }
+            ]
+        },
+        {
+            "label": "component:ckpt",
+            "maintainers": [
+                {
+                    "github": "Ziqi002"
                 }
             ]
         }

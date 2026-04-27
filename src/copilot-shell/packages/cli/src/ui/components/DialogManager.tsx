@@ -51,7 +51,9 @@ import { WelcomeBackDialog } from './WelcomeBackDialog.js';
 import { ModelSwitchDialog } from './ModelSwitchDialog.js';
 import { AgentCreationWizard } from './subagents/create/AgentCreationWizard.js';
 import { AgentsManagerDialog } from './subagents/manage/AgentsManagerDialog.js';
+import { SkillsDialog } from './SkillsDialog.js';
 import { SessionPicker } from './SessionPicker.js';
+import { t } from '../../i18n/index.js';
 import {
   readOpenClawConfig,
   readQwenCodeConfig,
@@ -197,6 +199,16 @@ export const DialogManager = ({
     return (
       <LoopDetectionConfirmation
         onComplete={uiState.loopDetectionConfirmationRequest.onComplete}
+      />
+    );
+  }
+  if (uiState.userPromptConfirmationRequest) {
+    const { reason, resolve } = uiState.userPromptConfirmationRequest;
+    return (
+      <ConsentPrompt
+        prompt={`${t('⚠️  **Hook Safety Check**')}\n\n${reason}\n\n${t('Send this prompt or cancel?')}`}
+        onConfirm={resolve}
+        terminalWidth={terminalWidth}
       />
     );
   }
@@ -567,6 +579,21 @@ export const DialogManager = ({
         currentBranch={uiState.branchName}
         onSelect={uiActions.handleResume}
         onCancel={uiActions.closeResumeDialog}
+      />
+    );
+  }
+
+  if (uiState.isSkillsDialogOpen) {
+    return (
+      <SkillsDialog
+        skillsByLevel={uiState.skillsByLevel}
+        onToggle={uiActions.toggleSkillDisabled}
+        onInvoke={(skillName) => {
+          uiActions.closeSkillsDialog();
+          uiActions.handleFinalSubmit(`/skills ${skillName}`);
+        }}
+        onClose={uiActions.closeSkillsDialog}
+        isLoading={uiState.isSkillsLoading}
       />
     );
   }

@@ -150,7 +150,8 @@ export interface OpenDialogActionReturn {
     | 'subagent_list'
     | 'permissions'
     | 'approval-mode'
-    | 'resume';
+    | 'resume'
+    | 'skills';
 }
 
 /**
