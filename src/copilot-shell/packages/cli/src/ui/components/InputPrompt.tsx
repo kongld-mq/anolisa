@@ -55,7 +55,7 @@ export interface InputPromptProps {
   shellModeActive: boolean;
   setShellModeActive: (value: boolean) => void;
   approvalMode: ApprovalMode;
-  onEscapePromptChange?: (showPrompt: boolean) => void;
+
   onToggleShortcuts?: () => void;
   showShortcuts?: boolean;
   onSuggestionsVisibilityChange?: (visible: boolean) => void;
@@ -102,7 +102,6 @@ export const InputPrompt: React.FC<InputPromptProps> = ({
   shellModeActive,
   setShellModeActive,
   approvalMode,
-  onEscapePromptChange,
   onToggleShortcuts,
   showShortcuts,
   onSuggestionsVisibilityChange,
@@ -113,11 +112,18 @@ export const InputPrompt: React.FC<InputPromptProps> = ({
   const uiState = useUIState();
   const uiActions = useUIActions();
   const [justNavigatedHistory, setJustNavigatedHistory] = useState(false);
-  const [escPressCount, setEscPressCount] = useState(0);
-  const [showEscapePrompt, setShowEscapePrompt] = useState(false);
-  const escapeTimerRef = useRef<NodeJS.Timeout | null>(null);
   const [recentPasteTime, setRecentPasteTime] = useState<number | null>(null);
   const pasteTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Clear paste timeout on unmount
+  useEffect(
+    () => () => {
+      if (pasteTimeoutRef.current) {
+        clearTimeout(pasteTimeoutRef.current);
+      }
+    },
+    [],
+  );
 
   const [dirs, setDirs] = useState<readonly string[]>(
     config.getWorkspaceContext().getDirectories(),
@@ -179,35 +185,6 @@ export const InputPrompt: React.FC<InputPromptProps> = ({
     commandSearchCompletion.resetCompletionState;
 
   const showCursor = focus && isShellFocused && !isEmbeddedShellFocused;
-
-  const resetEscapeState = useCallback(() => {
-    if (escapeTimerRef.current) {
-      clearTimeout(escapeTimerRef.current);
-      escapeTimerRef.current = null;
-    }
-    setEscPressCount(0);
-    setShowEscapePrompt(false);
-  }, []);
-
-  // Notify parent component about escape prompt state changes
-  useEffect(() => {
-    if (onEscapePromptChange) {
-      onEscapePromptChange(showEscapePrompt);
-    }
-  }, [showEscapePrompt, onEscapePromptChange]);
-
-  // Clear escape prompt timer on unmount
-  useEffect(
-    () => () => {
-      if (escapeTimerRef.current) {
-        clearTimeout(escapeTimerRef.current);
-      }
-      if (pasteTimeoutRef.current) {
-        clearTimeout(pasteTimeoutRef.current);
-      }
-    },
-    [],
-  );
 
   const handleSubmitAndClear = useCallback(
     (submittedValue: string) => {
@@ -361,13 +338,6 @@ export const InputPrompt: React.FC<InputPromptProps> = ({
         }
       }
 
-      // Reset ESC count and hide prompt on any non-ESC key
-      if (key.name !== 'escape') {
-        if (escPressCount > 0 || showEscapePrompt) {
-          resetEscapeState();
-        }
-      }
-
       if (
         key.sequence === '!' &&
         buffer.text === '' &&
@@ -433,7 +403,6 @@ export const InputPrompt: React.FC<InputPromptProps> = ({
         if (shellModeActive) {
           setShellModeActive(false);
           setShellCompletionTriggered(false);
-          resetEscapeState();
           return;
         }
 
@@ -441,36 +410,17 @@ export const InputPrompt: React.FC<InputPromptProps> = ({
           shellCompletion.resetCompletionState();
           setShellCompletionTriggered(false);
           setExpandedSuggestionIndex(-1);
-          resetEscapeState();
           return;
         }
 
         if (completion.showSuggestions) {
           completion.resetCompletionState();
           setExpandedSuggestionIndex(-1);
-          resetEscapeState();
           return;
         }
 
-        // Handle double ESC for clearing input
-        if (escPressCount === 0) {
-          if (buffer.text === '') {
-            return;
-          }
-          setEscPressCount(1);
-          setShowEscapePrompt(true);
-          if (escapeTimerRef.current) {
-            clearTimeout(escapeTimerRef.current);
-          }
-          escapeTimerRef.current = setTimeout(() => {
-            resetEscapeState();
-          }, 500);
-        } else {
-          // clear input and immediately reset state
-          buffer.setText('');
-          resetCompletionState();
-          resetEscapeState();
-        }
+        // Double ESC clear is handled by AppContainer
+        // Just return here to let AppContainer handle it
         return;
       }
 
@@ -778,9 +728,6 @@ export const InputPrompt: React.FC<InputPromptProps> = ({
       reverseSearchCompletion,
       handleClipboardImage,
       resetCompletionState,
-      escPressCount,
-      showEscapePrompt,
-      resetEscapeState,
       vimHandleInput,
       reverseSearchActive,
       textBeforeReverseSearch,

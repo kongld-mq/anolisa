@@ -1626,49 +1626,8 @@ describe('InputPrompt', () => {
   });
 
   describe('enhanced input UX - double ESC clear functionality', () => {
-    it('should clear buffer on second ESC press', async () => {
-      const onEscapePromptChange = vi.fn();
-      props.onEscapePromptChange = onEscapePromptChange;
-      props.buffer.setText('text to clear');
-
-      const { stdin, unmount } = renderWithProviders(
-        <InputPrompt {...props} />,
-      );
-      await wait();
-
-      stdin.write('\x1B');
-      await wait();
-
-      stdin.write('\x1B');
-      await wait();
-
-      expect(props.buffer.setText).toHaveBeenCalledWith('');
-      expect(mockCommandCompletion.resetCompletionState).toHaveBeenCalled();
-      unmount();
-    });
-
-    it('should reset escape state on any non-ESC key', async () => {
-      const onEscapePromptChange = vi.fn();
-      props.onEscapePromptChange = onEscapePromptChange;
-      props.buffer.setText('some text');
-
-      const { stdin, unmount } = renderWithProviders(
-        <InputPrompt {...props} />,
-      );
-
-      stdin.write('\x1B');
-
-      await waitFor(() => {
-        expect(onEscapePromptChange).toHaveBeenCalledWith(true);
-      });
-
-      stdin.write('a');
-
-      await waitFor(() => {
-        expect(onEscapePromptChange).toHaveBeenCalledWith(false);
-      });
-      unmount();
-    });
+    // Note: Double ESC clear is now handled by AppContainer, not InputPrompt
+    // InputPrompt only handles ESC for specific contexts (shell mode, completions, etc.)
 
     it('should handle ESC in shell mode by disabling shell mode', async () => {
       props.shellModeActive = true;
@@ -1701,21 +1660,6 @@ describe('InputPrompt', () => {
       await wait();
 
       expect(mockCommandCompletion.resetCompletionState).toHaveBeenCalled();
-      unmount();
-    });
-
-    it('should not call onEscapePromptChange when not provided', async () => {
-      props.onEscapePromptChange = undefined;
-      props.buffer.setText('some text');
-
-      const { stdin, unmount } = renderWithProviders(
-        <InputPrompt {...props} />,
-      );
-      await wait();
-
-      stdin.write('\x1B');
-      await wait();
-
       unmount();
     });
 
