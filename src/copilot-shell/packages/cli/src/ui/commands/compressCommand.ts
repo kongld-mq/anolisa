@@ -55,7 +55,7 @@ export const compressCommand: SlashCommand = {
 
     const doCompress = async () => {
       const promptId = `compress-${Date.now()}`;
-      return await geminiClient.tryCompressChat(promptId, true);
+      return await geminiClient.tryCompressChat(promptId, true, abortSignal);
     };
 
     if (executionMode === 'acp') {
