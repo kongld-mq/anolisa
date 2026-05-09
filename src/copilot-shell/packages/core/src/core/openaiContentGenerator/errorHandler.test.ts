@@ -9,12 +9,23 @@ import type { GenerateContentParameters } from '@google/genai';
 import { EnhancedErrorHandler } from './errorHandler.js';
 import type { RequestContext } from './errorHandler.js';
 
+const mockDebugLoggerError = vi.hoisted(() => vi.fn());
+vi.mock('../../utils/debugLogger.js', () => ({
+  createDebugLogger: () => ({
+    error: mockDebugLoggerError,
+    warn: vi.fn(),
+    info: vi.fn(),
+    debug: vi.fn(),
+  }),
+}));
+
 describe('EnhancedErrorHandler', () => {
   let errorHandler: EnhancedErrorHandler;
   let mockContext: RequestContext;
   let mockRequest: GenerateContentParameters;
 
   beforeEach(() => {
+    mockDebugLoggerError.mockClear();
     mockContext = {
       userPromptId: 'test-prompt-id',
       model: 'test-model',
@@ -60,6 +71,33 @@ describe('EnhancedErrorHandler', () => {
       }).toThrow(originalError);
     });
 
+    it('should log error message via debugLogger for non-timeout errors', () => {
+      const originalError = new Error('Test error');
+
+      expect(() => {
+        errorHandler.handle(originalError, mockContext, mockRequest);
+      }).toThrow();
+
+      expect(mockDebugLoggerError).toHaveBeenCalledWith(
+        'OpenAI API Error:',
+        'Test error',
+      );
+    });
+
+    it('should log streaming error message via debugLogger for streaming requests', () => {
+      const streamingContext = { ...mockContext, isStreaming: true };
+      const originalError = new Error('Test streaming error');
+
+      expect(() => {
+        errorHandler.handle(originalError, streamingContext, mockRequest);
+      }).toThrow();
+
+      expect(mockDebugLoggerError).toHaveBeenCalledWith(
+        'OpenAI API Streaming Error:',
+        'Test streaming error',
+      );
+    });
+
     it('should throw enhanced error message for timeout errors', () => {
       const timeoutError = new Error('Request timeout');
 
@@ -68,7 +106,7 @@ describe('EnhancedErrorHandler', () => {
       }).toThrow(/Request timeout after 5s.*Troubleshooting tips:/s);
     });
 
-    it('should use custom suppression function', () => {
+    it('should not log error when suppression is enabled', () => {
       const suppressLogging = vi.fn(() => true);
       errorHandler = new EnhancedErrorHandler(suppressLogging);
       const originalError = new Error('Test error');
@@ -77,25 +115,43 @@ describe('EnhancedErrorHandler', () => {
         errorHandler.handle(originalError, mockContext, mockRequest);
       }).toThrow();
 
+      expect(mockDebugLoggerError).not.toHaveBeenCalled();
       expect(suppressLogging).toHaveBeenCalledWith(originalError, mockRequest);
     });
 
-    it('should handle string errors', () => {
+    it('should handle string errors and log via debugLogger', () => {
       const stringError = 'String error message';
 
       expect(() => {
         errorHandler.handle(stringError, mockContext, mockRequest);
       }).toThrow(stringError);
+
+      expect(mockDebugLoggerError).toHaveBeenCalledWith(
+        'OpenAI API Error:',
+        'String error message',
+      );
     });
 
-    it('should handle null/undefined errors', () => {
+    it('should handle null/undefined errors and log via debugLogger', () => {
       expect(() => {
         errorHandler.handle(null, mockContext, mockRequest);
       }).toThrow();
 
+      expect(mockDebugLoggerError).toHaveBeenCalledWith(
+        'OpenAI API Error:',
+        'null',
+      );
+
+      mockDebugLoggerError.mockClear();
+
       expect(() => {
         errorHandler.handle(undefined, mockContext, mockRequest);
       }).toThrow();
+
+      expect(mockDebugLoggerError).toHaveBeenCalledWith(
+        'OpenAI API Error:',
+        'undefined',
+      );
     });
   });
 
