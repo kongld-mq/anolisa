@@ -865,6 +865,8 @@ export const InputPrompt: React.FC<InputPromptProps> = ({
       }
 
       // Handle backspace with placeholder-aware deletion
+      // Placeholder is treated as atomic - any backspace within its range
+      // (except at the very start) should delete the entire placeholder
       if (
         pendingPastes.size > 0 &&
         (key.name === 'backspace' ||
@@ -881,26 +883,57 @@ export const InputPrompt: React.FC<InputPromptProps> = ({
         }
         offset += col;
 
-        // Check if we're at the end of any placeholder
-        for (const placeholder of pendingPastes.keys()) {
-          const placeholderStart = offset - cpLen(placeholder);
-          if (
-            placeholderStart >= 0 &&
-            cpSlice(text, placeholderStart, offset) === placeholder
+        // Sort placeholders by length (descending) to avoid short placeholder
+        // matching prefix of longer placeholder (e.g., "[Pasted Content 100 chars]"
+        // matching the first 27 chars of "[Pasted Content 100 chars] #2")
+        const sortedPlaceholders = Array.from(pendingPastes.keys()).sort(
+          (a, b) => cpLen(b) - cpLen(a),
+        );
+
+        for (const placeholder of sortedPlaceholders) {
+          const placeholderLen = cpLen(placeholder);
+          // Find all occurrences of this placeholder in the text
+          for (
+            let searchStart = 0;
+            searchStart <= cpLen(text) - placeholderLen;
+            searchStart++
           ) {
-            // Delete the entire placeholder
-            buffer.replaceRangeByOffset(placeholderStart, offset, '');
-            // Remove from pendingPastes and free the ID for reuse
-            setPendingPastes((prev) => {
-              const next = new Map(prev);
-              next.delete(placeholder);
-              return next;
-            });
-            const parsed = parsePlaceholder(placeholder);
-            if (parsed) {
-              freePlaceholderId(parsed.charCount, parsed.id);
+            // Use code-point semantics to find placeholder position
+            if (
+              cpSlice(text, searchStart, searchStart + placeholderLen) !==
+              placeholder
+            ) {
+              continue;
             }
-            return;
+
+            const placeholderStart = searchStart;
+            const placeholderEnd = searchStart + placeholderLen;
+
+            // Check if backspace deletion would affect this placeholder:
+            // - When backspace is pressed, the character BEFORE the cursor is deleted
+            // - Deletion range is [offset - 1, offset] (or nothing if cursor at text start)
+            // - We want atomic deletion if:
+            //   1. Cursor is inside placeholder (not at start): offset > placeholderStart && offset <= placeholderEnd
+            //   2. Cursor at placeholder end: offset == placeholderEnd (this is the "normal" case)
+            // - Edge case: cursor at placeholder START (offset == placeholderStart)
+            //   → backspace deletes character BEFORE placeholder → NOT atomic
+            if (offset > placeholderStart && offset <= placeholderEnd) {
+              // Cursor is inside placeholder (including at end), but not at start
+              // → Atomic deletion: delete entire placeholder
+              buffer.replaceRangeByOffset(placeholderStart, placeholderEnd, '');
+              buffer.moveToOffset(placeholderStart);
+              // Remove from pendingPastes and free the ID for reuse
+              setPendingPastes((prev) => {
+                const next = new Map(prev);
+                next.delete(placeholder);
+                return next;
+              });
+              const parsed = parsePlaceholder(placeholder);
+              if (parsed) {
+                freePlaceholderId(parsed.charCount, parsed.id);
+              }
+              return;
+            }
           }
         }
         // No placeholder matched — fall through to buffer's default backspace
