@@ -874,19 +874,19 @@ export const InputPrompt: React.FC<InputPromptProps> = ({
         const text = buffer.text;
         const [row, col] = buffer.cursor;
 
-        // Calculate the offset where the cursor is
+        // Calculate the offset where the cursor is (using code-point semantics)
         let offset = 0;
         for (let i = 0; i < row; i++) {
-          offset += buffer.lines[i].length + 1; // +1 for newline
+          offset += cpLen(buffer.lines[i]) + 1; // +1 for newline
         }
         offset += col;
 
         // Check if we're at the end of any placeholder
         for (const placeholder of pendingPastes.keys()) {
-          const placeholderStart = offset - placeholder.length;
+          const placeholderStart = offset - cpLen(placeholder);
           if (
             placeholderStart >= 0 &&
-            text.slice(placeholderStart, offset) === placeholder
+            cpSlice(text, placeholderStart, offset) === placeholder
           ) {
             // Delete the entire placeholder
             buffer.replaceRangeByOffset(placeholderStart, offset, '');
