@@ -50,6 +50,18 @@ export interface UIActions {
   closeModelDialog: () => void;
   closePermissionsDialog: () => void;
   setShellModeActive: (value: boolean) => void;
+  setReverseSearchActive: (value: boolean) => void;
+  setCommandSearchActive: (value: boolean) => void;
+  cancelReverseSearch: () => void;
+  cancelCommandSearch: () => void;
+  resetCompletion: () => void;
+  resetShellCompletion: () => void;
+  registerResetCompletion: (resetFn: () => void) => void;
+  registerResetShellCompletion: (resetFn: () => void) => void;
+  registerCancelReverseSearch: (cancelFn: () => void) => void;
+  registerCancelCommandSearch: (cancelFn: () => void) => void;
+  setCompletionShowSuggestions: (value: boolean) => void;
+  setShellCompletionShowSuggestions: (value: boolean) => void;
   vimHandleInput: (key: Key) => boolean;
   handleIdePromptComplete: (result: IdeIntegrationNudgeResult) => void;
   handleCommandMigrationComplete: (result: CommandMigrationNudgeResult) => void;
