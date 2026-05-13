@@ -12,7 +12,7 @@ import { theme } from '../semantic-colors.js';
 import { useInputHistory } from '../hooks/useInputHistory.js';
 import type { TextBuffer } from './shared/text-buffer.js';
 import { logicalPosToOffset } from './shared/text-buffer.js';
-import { cpSlice, cpLen } from '../utils/textUtils.js';
+import { cpSlice, cpLen, toCodePoints } from '../utils/textUtils.js';
 import chalk from 'chalk';
 import { useShellHistory } from '../hooks/useShellHistory.js';
 import { useReverseSearchCompletion } from '../hooks/useReverseSearchCompletion.js';
@@ -27,6 +27,7 @@ import { ApprovalMode, createDebugLogger } from '@copilot-shell/core';
 import {
   parseInputForHighlighting,
   buildSegmentsForVisualSlice,
+  PLACEHOLDER_MARKER,
 } from '../utils/highlight.js';
 import { t } from '../../i18n/index.js';
 import {
@@ -128,25 +129,38 @@ export const InputPrompt: React.FC<InputPromptProps> = ({
   const pasteTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   // Large paste placeholder handling
-  const [pendingPastes, setPendingPastes] = useState<Map<string, string>>(
-    new Map(),
-  );
+  // Store paste metadata: { index: { charCount, content, id } }
+  // The index corresponds to the occurrence order of PLACEHOLDER_MARKER in buffer.text
+  const [pendingPastes, setPendingPastes] = useState<
+    Array<{ charCount: number; content: string; id: number }>
+  >([]);
+  // Ref to track the latest pendingPastes state (avoids React state update lag)
+  const pendingPastesRef = useRef<
+    Array<{ charCount: number; content: string; id: number }>
+  >([]);
+  // Sync ref with state whenever pendingPastes changes
+  useEffect(() => {
+    pendingPastesRef.current = pendingPastes;
+  }, [pendingPastes]);
   // Track active placeholder IDs for each charCount to enable reuse
   const activePlaceholderIds = useRef<Map<number, Set<number>>>(new Map());
 
-  // Parse placeholder to extract charCount and ID
-  const parsePlaceholder = useCallback(
-    (placeholder: string): { charCount: number; id: number } | null => {
-      const match = placeholder.match(
-        /^\[Pasted Content (\d+) chars\](?: #(\d+))?$/,
-      );
-      if (!match) return null;
-      const charCount = parseInt(match[1], 10);
-      const id = match[2] ? parseInt(match[2], 10) : 1;
-      return { charCount, id };
-    },
-    [],
-  );
+  // Generate unique ID for a given charCount
+  const nextPlaceholderId = useCallback((charCount: number): number => {
+    const activeIds = activePlaceholderIds.current.get(charCount) || new Set();
+
+    // Find smallest available ID (starting from 1)
+    let id = 1;
+    while (activeIds.has(id)) {
+      id++;
+    }
+
+    // Mark as active
+    activeIds.add(id);
+    activePlaceholderIds.current.set(charCount, activeIds);
+
+    return id;
+  }, []);
 
   // Free a placeholder ID when deleted so it can be reused
   const freePlaceholderId = useCallback((charCount: number, id: number) => {
@@ -161,24 +175,16 @@ export const InputPrompt: React.FC<InputPromptProps> = ({
     }
   }, []);
 
-  // Helper to generate unique placeholder for large pastes
-  // Reuses IDs that have been freed up from deleted placeholders
-  const nextLargePastePlaceholder = useCallback((charCount: number): string => {
-    const activeIds = activePlaceholderIds.current.get(charCount) || new Set();
-
-    // Find smallest available ID (starting from 1)
-    let id = 1;
-    while (activeIds.has(id)) {
-      id++;
-    }
-
-    // Mark as active
-    activeIds.add(id);
-    activePlaceholderIds.current.set(charCount, activeIds);
-
-    const base = `[Pasted Content ${charCount} chars]`;
-    return id === 1 ? base : `${base} #${id}`;
-  }, []);
+  // Convert placeholder metadata to localized display text
+  const placeholderToLocalized = useCallback(
+    (charCount: number, id: number): string => {
+      const baseLocalized = t('input.paste.placeholder', {
+        charCount: String(charCount),
+      });
+      return id === 1 ? baseLocalized : `${baseLocalized} #${id}`;
+    },
+    [],
+  );
 
   const [dirs, setDirs] = useState<readonly string[]>(
     config.getWorkspaceContext().getDirectories(),
@@ -273,21 +279,25 @@ export const InputPrompt: React.FC<InputPromptProps> = ({
   const handleSubmitAndClear = useCallback(
     (submittedValue: string) => {
       // Expand any large paste placeholders to their full content before submitting
+      // Replace PLACEHOLDER_MARKER characters with actual pasted content
       let finalValue = submittedValue;
-      if (pendingPastes.size > 0) {
-        const placeholders = Array.from(pendingPastes.keys()).sort(
-          (a, b) => b.length - a.length,
-        );
-        const escapedPlaceholders = placeholders.map((placeholderValue) =>
-          placeholderValue.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'),
-        );
-        const placeholderRegex = new RegExp(escapedPlaceholders.join('|'), 'g');
-        finalValue = finalValue.replace(
-          placeholderRegex,
-          (matchedPlaceholder) =>
-            pendingPastes.get(matchedPlaceholder) ?? matchedPlaceholder,
-        );
-        setPendingPastes(new Map());
+      if (pendingPastes.length > 0) {
+        // Replace each PLACEHOLDER_MARKER with corresponding pasted content
+        const parts: string[] = [];
+        let placeholderIdx = 0;
+        for (const ch of submittedValue) {
+          if (
+            ch === PLACEHOLDER_MARKER &&
+            placeholderIdx < pendingPastes.length
+          ) {
+            parts.push(pendingPastes[placeholderIdx].content);
+            placeholderIdx++;
+          } else {
+            parts.push(ch);
+          }
+        }
+        finalValue = parts.join('');
+        setPendingPastes([]);
         activePlaceholderIds.current.clear();
       }
       if (shellModeActive) {
@@ -429,14 +439,14 @@ export const InputPrompt: React.FC<InputPromptProps> = ({
           charCount > LARGE_PASTE_CHAR_THRESHOLD ||
           lineCount > LARGE_PASTE_LINE_THRESHOLD
         ) {
-          const placeholder = nextLargePastePlaceholder(charCount);
-          setPendingPastes((prev) => {
-            const next = new Map(prev);
-            next.set(placeholder, pasted);
-            return next;
-          });
-          // Insert the placeholder as regular text
-          buffer.insert(placeholder, { paste: false });
+          const id = nextPlaceholderId(charCount);
+          // Insert single-character marker instead of full placeholder text
+          // This makes cursor movement naturally skip over placeholder (1 keypress = 1 char)
+          buffer.insert(PLACEHOLDER_MARKER, { paste: false });
+          setPendingPastes((prev) => [
+            ...prev,
+            { charCount, content: pasted, id },
+          ]);
         } else {
           // Normal paste handling for small content
           buffer.handleInput(key);
@@ -570,7 +580,7 @@ export const InputPrompt: React.FC<InputPromptProps> = ({
           resetCompletionState();
           resetEscapeState();
           // Clear paste placeholder state when ESC cancels input
-          setPendingPastes(new Map());
+          setPendingPastes([]);
           activePlaceholderIds.current.clear();
         }
         return;
@@ -865,79 +875,110 @@ export const InputPrompt: React.FC<InputPromptProps> = ({
       }
 
       // Handle backspace with placeholder-aware deletion
-      // Placeholder is treated as atomic - any backspace within its range
-      // (except at the very start) should delete the entire placeholder
-      if (
-        pendingPastes.size > 0 &&
-        (key.name === 'backspace' ||
-          key.sequence === '\x7f' ||
-          (key.ctrl && key.name === 'h'))
-      ) {
-        const text = buffer.text;
-        const [row, col] = buffer.cursor;
+      // Since placeholder marker is a single character (PLACEHOLDER_MARKER),
+      // we just need to check if backspace would delete a marker.
+      // If so, also remove the corresponding entry from pendingPastes.
+      // Handle backspace with placeholder-aware deletion
+      // Placeholder marker is a single character - backspace should delete it when:
+      // 1. Cursor is ON the marker (user "selected" it with arrow keys)
+      // 2. Cursor is right AFTER the marker (normal backspace case)
+      const isBackspace =
+        key.name === 'backspace' ||
+        key.sequence === '\x7f' ||
+        (key.ctrl && key.name === 'h');
 
-        // Calculate the offset where the cursor is (using code-point semantics)
-        let offset = 0;
-        for (let i = 0; i < row; i++) {
-          offset += cpLen(buffer.lines[i]) + 1; // +1 for newline
-        }
-        offset += col;
+      if (isBackspace) {
+        // Use ref to get the latest pendingPastes state (avoids React state update lag)
+        const currentPendingPastes = pendingPastesRef.current;
+        const currentText = buffer.text;
+        const currentOffset = buffer.offset; // This is code-point offset
 
-        // Sort placeholders by length (descending) to avoid short placeholder
-        // matching prefix of longer placeholder (e.g., "[Pasted Content 100 chars]"
-        // matching the first 27 chars of "[Pasted Content 100 chars] #2")
-        const sortedPlaceholders = Array.from(pendingPastes.keys()).sort(
-          (a, b) => cpLen(b) - cpLen(a),
-        );
-
-        for (const placeholder of sortedPlaceholders) {
-          const placeholderLen = cpLen(placeholder);
-          // Find all occurrences of this placeholder in the text
-          for (
-            let searchStart = 0;
-            searchStart <= cpLen(text) - placeholderLen;
-            searchStart++
-          ) {
-            // Use code-point semantics to find placeholder position
-            if (
-              cpSlice(text, searchStart, searchStart + placeholderLen) !==
-              placeholder
-            ) {
-              continue;
-            }
-
-            const placeholderStart = searchStart;
-            const placeholderEnd = searchStart + placeholderLen;
-
-            // Check if backspace deletion would affect this placeholder:
-            // - When backspace is pressed, the character BEFORE the cursor is deleted
-            // - Deletion range is [offset - 1, offset] (or nothing if cursor at text start)
-            // - We want atomic deletion if:
-            //   1. Cursor is inside placeholder (not at start): offset > placeholderStart && offset <= placeholderEnd
-            //   2. Cursor at placeholder end: offset == placeholderEnd (this is the "normal" case)
-            // - Edge case: cursor at placeholder START (offset == placeholderStart)
-            //   → backspace deletes character BEFORE placeholder → NOT atomic
-            if (offset > placeholderStart && offset <= placeholderEnd) {
-              // Cursor is inside placeholder (including at end), but not at start
-              // → Atomic deletion: delete entire placeholder
-              buffer.replaceRangeByOffset(placeholderStart, placeholderEnd, '');
-              buffer.moveToOffset(placeholderStart);
-              // Remove from pendingPastes and free the ID for reuse
-              setPendingPastes((prev) => {
-                const next = new Map(prev);
-                next.delete(placeholder);
-                return next;
-              });
-              const parsed = parsePlaceholder(placeholder);
-              if (parsed) {
-                freePlaceholderId(parsed.charCount, parsed.id);
-              }
-              return;
-            }
+        // Find all marker positions using code-point semantics (not UTF-16 index)
+        // This ensures consistency when there are emoji/non-BMP characters
+        const codePoints = toCodePoints(currentText);
+        const markerPositions: number[] = [];
+        for (let i = 0; i < codePoints.length; i++) {
+          if (codePoints[i] === PLACEHOLDER_MARKER) {
+            markerPositions.push(i);
           }
         }
-        // No placeholder matched — fall through to buffer's default backspace
+
+        // Sync pendingPastes with actual markers in buffer (handle edge cases)
+        // If pendingPastes has more entries than markers, trim excess (orphan entries)
+        // This can happen when buffer.text updates lag behind pendingPastes updates
+        if (currentPendingPastes.length > markerPositions.length) {
+          const excessEntries = currentPendingPastes.slice(
+            markerPositions.length,
+          );
+          for (const entry of excessEntries) {
+            freePlaceholderId(entry.charCount, entry.id);
+          }
+          const syncedPendingPastes = currentPendingPastes.slice(
+            0,
+            markerPositions.length,
+          );
+          pendingPastesRef.current = syncedPendingPastes;
+          setPendingPastes(syncedPendingPastes);
+        }
+
+        if (markerPositions.length > 0) {
+          // Determine which marker to delete based on current cursor position:
+          // - Priority 1: marker at cursor position (cursor ON marker)
+          // - Priority 2: marker before cursor position (cursor AFTER marker)
+          let deleteIndex = -1;
+          let deleteOffset = -1;
+
+          // Check if cursor is ON a marker
+          const onMarkerIndex = markerPositions.findIndex(
+            (pos) => pos === currentOffset,
+          );
+          if (onMarkerIndex !== -1) {
+            deleteIndex = onMarkerIndex;
+            deleteOffset = markerPositions[onMarkerIndex];
+          } else {
+            // Check if cursor is right AFTER a marker
+            const afterMarkerIndex = markerPositions.findIndex(
+              (pos) => pos === currentOffset - 1,
+            );
+            if (afterMarkerIndex !== -1) {
+              deleteIndex = afterMarkerIndex;
+              deleteOffset = markerPositions[afterMarkerIndex];
+            }
+          }
+
+          if (deleteIndex !== -1 && deleteOffset !== -1) {
+            // Found a marker at deletion position
+            // Use the synced pendingPastes (may have been trimmed above)
+            const syncedPendingPastes = pendingPastesRef.current;
+            if (
+              syncedPendingPastes.length > 0 &&
+              deleteIndex < syncedPendingPastes.length
+            ) {
+              // Marker has associated paste data - free the ID
+              const entry = syncedPendingPastes[deleteIndex];
+              freePlaceholderId(entry.charCount, entry.id);
+              // Update both state and ref synchronously
+              const newPendingPastes = syncedPendingPastes.filter(
+                (_, i) => i !== deleteIndex,
+              );
+              pendingPastesRef.current = newPendingPastes;
+              setPendingPastes(newPendingPastes);
+            }
+            // Always delete the marker from buffer using code-point semantics
+            const newText =
+              cpSlice(currentText, 0, deleteOffset) +
+              cpSlice(currentText, deleteOffset + 1);
+            buffer.setText(newText);
+            buffer.moveToOffset(deleteOffset);
+            return;
+          }
+        }
+        // No placeholder marker at deletion position - fall through to default backspace
       }
+
+      // No placeholder jump logic needed!
+      // Since placeholder marker is a single character, cursor movement naturally
+      // skips over it (1 keypress = 1 character position).
 
       // Fall back to the text buffer's default input handling for all other keys
       buffer.handleInput(key);
@@ -972,10 +1013,8 @@ export const InputPrompt: React.FC<InputPromptProps> = ({
       uiState,
       uiActions,
       pasteWorkaround,
-      nextLargePastePlaceholder,
-      pendingPastes,
-      parsePlaceholder,
       freePlaceholderId,
+      nextPlaceholderId,
     ],
   );
 
@@ -1096,38 +1135,87 @@ export const InputPrompt: React.FC<InputPromptProps> = ({
                 visualEnd,
               );
 
+              // Calculate how many placeholder markers appear before this logical line
+              // This gives us the starting index in the pendingPastes array for this line
+              let placeholderIndexInLine = 0;
+              for (let i = 0; i < logicalLineIdx; i++) {
+                const prevLine = buffer.lines[i] || '';
+                for (const ch of prevLine) {
+                  if (ch === PLACEHOLDER_MARKER) {
+                    placeholderIndexInLine++;
+                  }
+                }
+              }
+              // Also count placeholders before the logicalStartCol in this line
+              for (
+                let i = 0;
+                i < logicalStartCol && i < logicalLine.length;
+                i++
+              ) {
+                if (logicalLine[i] === PLACEHOLDER_MARKER) {
+                  placeholderIndexInLine++;
+                }
+              }
+
               let charCount = 0;
               segments.forEach((seg, segIdx) => {
-                const segLen = cpLen(seg.text);
-                let display = seg.text;
+                // For placeholder tokens, replace marker with localized text for display
+                // The segment length in buffer is always 1 (the marker character)
+                // But the displayed text may be longer (localized placeholder)
+                // This means cursor movement naturally skips placeholder in 1 keypress
+                const segLen = cpLen(seg.text); // Always 1 for placeholder marker
+                let localizedText: string;
+                if (seg.type === 'placeholder' && pendingPastes.length > 0) {
+                  // seg.text is PLACEHOLDER_MARKER (single char, length=1)
+                  // Get metadata from pendingPastes array by index
+                  const entry = pendingPastes[placeholderIndexInLine];
+                  if (entry) {
+                    localizedText = placeholderToLocalized(
+                      entry.charCount,
+                      entry.id,
+                    );
+                    placeholderIndexInLine++;
+                  } else {
+                    localizedText = seg.text;
+                  }
+                } else {
+                  localizedText = seg.text;
+                }
+                let display = localizedText;
 
                 if (isOnCursorLine) {
                   const relativeVisualColForHighlight = cursorVisualColAbsolute;
                   const segStart = charCount;
-                  const segEnd = segStart + segLen;
+                  const segEnd = segStart + segLen; // Based on buffer position (marker = 1)
+                  // Check if cursor is within this segment's range
                   if (
                     relativeVisualColForHighlight >= segStart &&
                     relativeVisualColForHighlight < segEnd
                   ) {
-                    const charToHighlight = cpSlice(
-                      seg.text,
-                      relativeVisualColForHighlight - segStart,
-                      relativeVisualColForHighlight - segStart + 1,
-                    );
-                    const highlighted = showCursor
-                      ? chalk.inverse(charToHighlight)
-                      : charToHighlight;
-                    display =
-                      cpSlice(
-                        seg.text,
-                        0,
-                        relativeVisualColForHighlight - segStart,
-                      ) +
-                      highlighted +
-                      cpSlice(
-                        seg.text,
-                        relativeVisualColForHighlight - segStart + 1,
+                    if (seg.type === 'placeholder') {
+                      // For placeholder: highlight the entire placeholder as a block
+                      // This treats placeholder as an atomic unit - no character-level cursor inside
+                      // Works correctly for any language without complex offset mapping
+                      display = showCursor
+                        ? chalk.inverse(localizedText)
+                        : localizedText;
+                    } else {
+                      // For other tokens: highlight single character at cursor position
+                      const offsetInSeg =
+                        relativeVisualColForHighlight - segStart;
+                      const charToHighlight = cpSlice(
+                        localizedText,
+                        offsetInSeg,
+                        offsetInSeg + 1,
                       );
+                      const highlighted = showCursor
+                        ? chalk.inverse(charToHighlight)
+                        : charToHighlight;
+                      display =
+                        cpSlice(localizedText, 0, offsetInSeg) +
+                        highlighted +
+                        cpSlice(localizedText, offsetInSeg + 1);
+                    }
                   }
                   charCount = segEnd;
                 }
@@ -1183,8 +1271,15 @@ export const InputPrompt: React.FC<InputPromptProps> = ({
               }
 
               return (
-                <Box key={`line-${visualIdxInRenderedSet}`} height={1}>
-                  <Text>{renderedLine}</Text>
+                <Box
+                  key={`line-${visualIdxInRenderedSet}`}
+                  minHeight={1}
+                  flexDirection="column"
+                >
+                  {/* Ensure at least one line is rendered, even for empty lines */}
+                  <Text wrap="wrap">
+                    {renderedLine.length > 0 ? renderedLine : '\u200B'}
+                  </Text>
                 </Box>
               );
             })
