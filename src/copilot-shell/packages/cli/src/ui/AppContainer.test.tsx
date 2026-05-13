@@ -14,7 +14,7 @@ import {
   type Mock,
 } from 'vitest';
 import { render, cleanup } from 'ink-testing-library';
-import { AppContainer } from './AppContainer.js';
+import { AppContainer, ESC_DOUBLE_PRESS_WINDOW_MS } from './AppContainer.js';
 import {
   type Config,
   makeFakeConfig,
@@ -1184,6 +1184,24 @@ describe('AppContainer State Management', () => {
       // Verify that the actions are correctly passed through context
       capturedUIActions.closeModelDialog();
       expect(mockCloseModelDialog).toHaveBeenCalled();
+    });
+  });
+
+  describe('ESC Double Press Window', () => {
+    it('should define ESC double press window as 500ms (matching qwen-code original design)', () => {
+      // This test ensures the ESC double press window stays at 500ms
+      // as per the original qwen-code design, not 1000ms like Ctrl+C/D
+      expect(ESC_DOUBLE_PRESS_WINDOW_MS).toBe(500);
+    });
+
+    it('should distinguish ESC window from Ctrl+C/D exit prompt duration', () => {
+      // Ctrl+C/D uses 1000ms, ESC uses 500ms - different interaction patterns
+      expect(ESC_DOUBLE_PRESS_WINDOW_MS).toBeLessThan(
+        // Import the constant value for comparison
+        // Since CTRL_EXIT_PROMPT_DURATION_MS is also exported, we can import it
+        // but for simplicity, we just check ESC is 500ms and note Ctrl+C/D is 1000ms
+        1000,
+      );
     });
   });
 });

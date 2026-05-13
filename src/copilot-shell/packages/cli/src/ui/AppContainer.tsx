@@ -113,7 +113,8 @@ import {
   requestConsentOrFail,
 } from '../commands/extensions/consent.js';
 
-const CTRL_EXIT_PROMPT_DURATION_MS = 1000;
+export const CTRL_EXIT_PROMPT_DURATION_MS = 1000;
+export const ESC_DOUBLE_PRESS_WINDOW_MS = 500;
 
 function isToolExecuting(pendingHistoryItems: HistoryItemWithoutId[]) {
   return pendingHistoryItems.some((item) => {
@@ -1373,7 +1374,7 @@ export const AppContainer = (props: AppContainerProps) => {
             setEscapePressedOnce(false);
             setShowEscapePrompt(false);
             escapeTimerRef.current = null;
-          }, CTRL_EXIT_PROMPT_DURATION_MS);
+          }, ESC_DOUBLE_PRESS_WINDOW_MS);
           return;
         }
 
