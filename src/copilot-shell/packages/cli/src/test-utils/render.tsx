@@ -46,7 +46,6 @@ const createMockUIState = (): UIState => ({
   isAuthDialogOpen: false,
   showBashOptionInAuthDialog: false,
   pendingAuthType: undefined,
-  qwenAuthState: {} as never,
   editorError: null,
   isEditorDialogOpen: false,
   debugMessage: '',
