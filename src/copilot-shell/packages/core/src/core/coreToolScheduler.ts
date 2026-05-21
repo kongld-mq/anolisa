@@ -1052,8 +1052,10 @@ export class CoreToolScheduler {
           const isPlanMode =
             this.config.getApprovalMode() === ApprovalMode.PLAN;
           const isExitPlanModeTool = reqInfo.name === 'exit_plan_mode';
+          const isAskUserQuestionTool =
+            reqInfo.name === ToolNames.ASK_USER_QUESTION;
 
-          if (isPlanMode && !isExitPlanModeTool) {
+          if (isPlanMode && !isExitPlanModeTool && !isAskUserQuestionTool) {
             if (effectiveConfirmationDetails) {
               this.setStatusInternal(reqInfo.callId, 'error', {
                 callId: reqInfo.callId,
@@ -1071,7 +1073,9 @@ export class CoreToolScheduler {
             }
           } else if (
             // hookForceAsk overrides YOLO/allowlist — hook explicitly requested user confirmation
+            // Even in YOLO mode, ask_user_question tool requires user confirmation to ensure the user always has a chance to respond to questions
             !hookForceAsk &&
+            !isAskUserQuestionTool &&
             (this.config.getApprovalMode() === ApprovalMode.YOLO ||
               doesToolInvocationMatch(toolCall.tool, invocation, allowedTools))
           ) {

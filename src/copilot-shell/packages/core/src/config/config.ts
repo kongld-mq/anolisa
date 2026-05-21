@@ -62,6 +62,7 @@ import { WebFetchTool } from '../tools/web-fetch.js';
 import { WebSearchTool } from '../tools/web-search/index.js';
 import { WriteFileTool } from '../tools/write-file.js';
 import { LspTool } from '../tools/lsp.js';
+import { AskUserQuestionTool } from '../tools/askUserQuestion.js';
 import type { LspClient } from '../lsp/types.js';
 
 // Other modules
@@ -1903,6 +1904,7 @@ export class Config {
     registerCoreTool(MemoryTool);
     registerCoreTool(TodoWriteTool, this);
     !this.sdkMode && registerCoreTool(ExitPlanModeTool, this);
+    registerCoreTool(AskUserQuestionTool, this);
     registerCoreTool(WebFetchTool, this);
     // Conditionally register web search tool if web search provider is configured
     if (this.getWebSearchConfig()) {
