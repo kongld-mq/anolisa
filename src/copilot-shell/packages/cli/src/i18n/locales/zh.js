@@ -1416,4 +1416,29 @@ export default {
   'Send this prompt or cancel?': '是否继续发送这条 prompt？',
   'A hook requires your confirmation to proceed.':
     '有 Hook 需要您的确认方可继续。',
+
+  // ============================================================================
+  // Ask User Question Tool
+  // ============================================================================
+  'Please answer the following question(s):': '请回答以下问题：',
+  'Cannot ask user questions in non-interactive mode. Please run in interactive mode to use this tool.':
+    '无法在非交互模式下询问用户问题。请在交互模式下运行以使用此工具。',
+  'User declined to answer the questions.': '用户拒绝回答问题。',
+  'User has provided the following answers:': '用户提供了以下答案：',
+  'Failed to process user answers:': '处理用户答案失败：',
+  'Type something...': '输入内容...',
+  Submit: '提交',
+  'Submit answers': '提交答案',
+  Cancel: '取消',
+  'Your answers:': '您的答案：',
+  '(not answered)': '(未回答)',
+  'Ready to submit your answers?': '准备好提交您的答案了吗？',
+  '↑/↓: Navigate | ←/→: Switch tabs | Enter: Select':
+    '↑/↓: 导航 | ←/→: 切换标签页 | Enter: 选择',
+  '↑/↓: Navigate | ←/→: Switch tabs | Space/Enter: Toggle | Esc: Cancel':
+    '↑/↓: 导航 | ←/→: 切换标签页 | Space/Enter: 切换 | Esc: 取消',
+  '↑/↓: Navigate | Space/Enter: Toggle | Esc: Cancel':
+    '↑/↓: 导航 | Space/Enter: 切换 | Esc: 取消',
+  '↑/↓: Navigate | Enter: Select | Esc: Cancel':
+    '↑/↓: 导航 | Enter: 选择 | Esc: 取消',
 };
