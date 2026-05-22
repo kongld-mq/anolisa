@@ -467,7 +467,6 @@ export const AskUserQuestionDialog: React.FC<AskUserQuestionDialogProps> = ({
               </Text>
               <TextInput
                 value={currentCustomInputValue}
-                initialCursorOffset={currentCustomInputValue.length}
                 onChange={(value: string) => {
                   const oldValue =
                     customInputValues[currentQuestionIndex] ?? '';

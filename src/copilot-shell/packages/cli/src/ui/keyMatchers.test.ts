@@ -36,6 +36,10 @@ describe('keyMatchers', () => {
     [Command.HISTORY_DOWN]: (key: Key) => key.ctrl && key.name === 'n',
     [Command.NAVIGATION_UP]: (key: Key) => key.name === 'up',
     [Command.NAVIGATION_DOWN]: (key: Key) => key.name === 'down',
+    [Command.SELECTION_UP]: (key: Key) =>
+      key.name === 'up' || (key.ctrl && key.name === 'p') || key.name === 'k',
+    [Command.SELECTION_DOWN]: (key: Key) =>
+      key.name === 'down' || (key.ctrl && key.name === 'n') || key.name === 'j',
     [Command.ACCEPT_SUGGESTION]: (key: Key) =>
       key.name === 'tab' || (key.name === 'return' && !key.ctrl),
     // Completion navigation only uses arrow keys (not Ctrl+P/N)

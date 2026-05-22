@@ -8,8 +8,9 @@ import type {
   ToolAskUserQuestionConfirmationDetails,
   ToolConfirmationPayload,
   ToolResult,
+  ToolResultDisplay,
 } from './tools.js';
-import type { PermissionDecision } from '../permissions/types.js';
+import type { ShellExecutionConfig } from '../services/shellExecutionService.js';
 import {
   BaseDeclarativeTool,
   BaseToolInvocation,
@@ -160,21 +161,18 @@ class AskUserQuestionToolInvocation extends BaseToolInvocation<
    * provide answers. In non-interactive mode without ACP support, we skip
    * confirmation (and subsequently skip execution).
    */
-  override async getDefaultPermission(): Promise<PermissionDecision> {
+  override async shouldConfirmExecute(
+    _abortSignal: AbortSignal,
+  ): Promise<ToolAskUserQuestionConfirmationDetails | false> {
     const isAcpMode =
       this._config.getExperimentalZedIntegration() ||
       this._config.getInputFormat() === InputFormat.STREAM_JSON;
 
+    // In non-interactive mode without ACP support, skip entirely
     if (!this._config.isInteractive() && !isAcpMode) {
-      // Non-interactive + no ACP: skip entirely
-      return 'allow';
+      return false;
     }
-    return 'ask';
-  }
 
-  override async getConfirmationDetails(
-    _abortSignal: AbortSignal,
-  ): Promise<ToolAskUserQuestionConfirmationDetails> {
     const details: ToolAskUserQuestionConfirmationDetails = {
       type: 'ask_user_question',
       title: 'Please answer the following question(s):',
@@ -204,7 +202,11 @@ class AskUserQuestionToolInvocation extends BaseToolInvocation<
     return details;
   }
 
-  async execute(_signal: AbortSignal): Promise<ToolResult> {
+  async execute(
+    _signal: AbortSignal,
+    _updateOutput?: (output: ToolResultDisplay) => void,
+    _shellExecutionConfig?: ShellExecutionConfig,
+  ): Promise<ToolResult> {
     try {
       // Check if we're in a mode that supports user interaction
       // ACP mode (VSCode extension, etc.) uses non-interactive mode but can still collect user input
@@ -281,21 +283,20 @@ export class AskUserQuestionTool extends BaseDeclarativeTool<
       >,
       true, // isOutputMarkdown
       false, // canUpdateOutput
-      false, // shouldDefer — kept always-visible so the model reaches for the structured clarification UX instead of asking in plain prose
     );
   }
 
   override validateToolParams(params: AskUserQuestionParams): string | null {
     // Validate questions array
     if (!Array.isArray(params.questions)) {
-      return 'Parameter "questions" must be an array.';
+      return '"questions" must be an array.';
     }
 
     if (params.questions.length < 1 || params.questions.length > 4) {
-      return 'Parameter "questions" must contain between 1 and 4 questions.';
+      return '"questions" must contain between 1 and 4 questions.';
     }
 
-    // Validate individual questions
+    // Validate each question
     for (let i = 0; i < params.questions.length; i++) {
       const question = params.questions[i];
 
