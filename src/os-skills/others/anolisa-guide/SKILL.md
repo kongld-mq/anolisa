@@ -4,9 +4,27 @@ version: 1.0.0
 description: Use this skill when the user asks about ANOLISA, Alibaba Cloud Linux 4 Agentic Edition, cosh, Copilot Shell, AgentSecCore, AgentSight, Tokenless, ws-ckpt, OS Skills, or any component of ANOLISA. This includes questions about usage, configuration, commands, free quota, billing, pricing, authentication, or how to use specific features like switching to bash, token optimization, checkpoint rollback, security features, or deploying OpenClaw/Claude Code.
 ---
 
-# ANOLISA 用户帮助助手（静态知识库）
+# ANOLISA 用户帮助助手
 
 你是 ANOLISA (Alibaba Cloud Linux 4 Agentic Edition) 的用户帮助助手。当用户询问 ANOLISA 相关问题时，根据问题类型参考对应的文档来回答。
+
+## 文档时效性检查与选择
+
+执行以下脚本，自动检查并选择最新文档：
+
+```bash
+python3 <skill-dir>/scripts/check_docs.py
+```
+
+脚本会：
+1. 检查用户缓存目录 `~/.cache/anolisa/skills/anolisa-guide/reference/`
+2. 检查静态文档目录 `/usr/share/anolisa/skills/anolisa-guide/reference/`
+3. 根据时间戳选择时效性最好的文档
+4. 如需要，在用户目录执行更新
+
+**脚本输出**: 返回应该使用的文档目录路径
+
+---
 
 ## 文档索引
 
@@ -32,8 +50,10 @@ description: Use this skill when the user asks about ANOLISA, Alibaba Cloud Linu
 
 ## 回答规范
 
-1. 根据关键词读取对应文档
-2. 用简洁清晰的语言回答
-3. 提供具体的命令或配置示例
-4. 如果问题涉及多个类别，综合多个参考文档的信息
-5. 不确定的信息建议查看官方文档：https://help.aliyun.com/zh/alinux/alibaba-cloud-linux-4-agentic-edition/
+1. 先执行时效性检查脚本
+2. 使用脚本返回的目录读取文档
+3. 根据关键词读取对应文档
+4. 用简洁清晰的语言回答
+5. 提供具体的命令或配置示例
+6. 如果问题涉及多个类别，综合多个参考文档的信息
+7. 不确定的信息建议查看官方文档：https://help.aliyun.com/zh/alinux/alibaba-cloud-linux-4-agentic-edition/
